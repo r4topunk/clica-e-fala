@@ -7,6 +7,7 @@
     "frontendDist": "../src"
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": true,
     "windows": [
       {
@@ -31,6 +32,22 @@
         "resizable": false,
         "skipTaskbar": true,
         "focus": true
+      },
+      {
+        "label": "aura",
+        "url": "aura.html",
+        "title": "Aura",
+        "width": 100,
+        "height": 100,
+        "visible": false,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "focus": false,
+        "shadow": false,
+        "acceptFirstMouse": false
       }
     ],
     "security": {

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio;
+mod aura;
 mod history;
 mod logging;
 mod pipeline;
@@ -48,6 +49,7 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
             let result =
                 run_pipeline(recorder, &model, &player, &paste_lock, mode, &app_handle);
             let _ = tray::set_state(&app_handle, tray::TrayState::Idle);
+            aura::set_state(&app_handle, tray::TrayState::Idle);
             if let Err(e) = result {
                 logln!("[pipeline] error: {:?}", e);
             }
@@ -65,6 +67,7 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
             Ok(r) => {
                 *state.recorder.lock().unwrap() = Some((r, new_mode));
                 let _ = tray::set_state(app, tray::TrayState::Recording);
+                aura::set_state(app, tray::TrayState::Recording);
                 logln!("[rec] started (mode={:?})", new_mode);
             }
             Err(e) => {
@@ -89,6 +92,7 @@ fn run_pipeline(
     logln!("[ffmpeg] normalized");
 
     let _ = tray::set_state(app, tray::TrayState::Transcribing);
+    aura::set_state(app, tray::TrayState::Transcribing);
     let transcript = {
         let _guard = player.start_transcribe_loop();
         let provider = if std::env::var("GROQ_API_KEY")
@@ -114,6 +118,7 @@ fn run_pipeline(
         }
         Mode::Refined => {
             let _ = tray::set_state(app, tray::TrayState::Refining);
+            aura::set_state(app, tray::TrayState::Refining);
             let (refined, provider) = {
                 let _guard = player.start_claude_loop();
                 logln!("[refine] starting");
@@ -127,6 +132,7 @@ fn run_pipeline(
             let front = review::capture_frontmost_app();
             logln!("[review] frontmost app: {:?}", front);
             let _ = tray::set_state(app, tray::TrayState::Review);
+            aura::set_state(app, tray::TrayState::Review);
 
             let edited = match review::show_and_wait(
                 app,
@@ -274,6 +280,10 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
+
+            if let Err(e) = aura::install(app.handle()) {
+                logln!("[aura] install failed: {:?}", e);
+            }
 
             let refined_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
