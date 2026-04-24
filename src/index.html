@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Clica e Fala</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0b0f14;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      text-align: center;
+      padding: 24px;
+    }
+    kbd {
+      background: #1e2530;
+      border: 1px solid #2d3643;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-family: ui-monospace, monospace;
+    }
+    .status { margin-top: 16px; color: #8b949e; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Clica e Fala</h1>
+    <p>Refined: <kbd>⌘⇧Space</kbd></p>
+    <p>Raw (só transcript): <kbd>⌘⇧⌥Space</kbd></p>
+    <div class="status">Rodando em background. Fale, espere transcrever, cola no app focado.</div>
+  </div>
+</body>
+</html>
