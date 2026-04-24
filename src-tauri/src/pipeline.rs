@@ -303,23 +303,39 @@ pub fn refine_with_claude(transcript: &str) -> Result<String> {
 }
 
 pub fn copy_and_paste(text: &str) -> Result<()> {
+    set_clipboard(text)?;
+    post_cmd_v()?;
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    Ok(())
+}
+
+pub fn set_clipboard(text: &str) -> Result<()> {
     let mut cb = arboard::Clipboard::new()?;
     cb.set_text(text.to_string())?;
-    drop(cb);
-
-    std::thread::sleep(std::time::Duration::from_millis(80));
-
-    let status = Command::new("osascript")
-        .args([
-            "-e",
-            "tell application \"System Events\" to keystroke \"v\" using command down",
-        ])
-        .status()?;
-    if !status.success() {
-        return Err(anyhow!("osascript paste failed"));
-    }
-    std::thread::sleep(std::time::Duration::from_millis(250));
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn post_cmd_v() -> Result<()> {
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|_| anyhow!("CGEventSource::new failed"))?;
+    let down = CGEvent::new_keyboard_event(src.clone(), 9, true)
+        .map_err(|_| anyhow!("CGEvent keydown failed"))?;
+    down.set_flags(CGEventFlags::CGEventFlagCommand);
+    down.post(CGEventTapLocation::HID);
+    let up = CGEvent::new_keyboard_event(src, 9, false)
+        .map_err(|_| anyhow!("CGEvent keyup failed"))?;
+    up.set_flags(CGEventFlags::CGEventFlagCommand);
+    up.post(CGEventTapLocation::HID);
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn post_cmd_v() -> Result<()> {
+    Err(anyhow!("paste only implemented on macOS"))
 }
 
 pub fn log_and_maybe_consolidate(transcript: &str, refined: &str, model_used: &str) -> Result<bool> {

@@ -70,32 +70,55 @@ pub fn review_cancel(slot: State<'_, ReviewSlot>) {
     }
 }
 
-pub fn capture_frontmost_app() -> Option<String> {
-    let out = std::process::Command::new("osascript")
-        .args([
-            "-e",
-            "tell application \"System Events\" to get name of first application process whose frontmost is true",
-        ])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
+#[derive(Clone, Debug)]
+pub struct FrontApp {
+    pub pid: i32,
+    #[allow(dead_code)]
+    pub name: String,
+}
+
+#[cfg(target_os = "macos")]
+pub fn capture_frontmost_app() -> Option<FrontApp> {
+    use objc2_app_kit::NSWorkspace;
+    let ws = NSWorkspace::sharedWorkspace();
+    let app = ws.frontmostApplication()?;
+    let pid = app.processIdentifier();
+    let name = app
+        .localizedName()
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    Some(FrontApp { pid, name })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn capture_frontmost_app() -> Option<FrontApp> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+pub fn activate_app(front: &FrontApp) -> Result<()> {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication};
+    if let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(front.pid) {
+        app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows);
+        Ok(())
     } else {
-        Some(s)
+        Err(anyhow!("no running app with pid {}", front.pid))
     }
 }
 
-pub fn activate_app(name: &str) -> Result<()> {
-    let sanitized = name.replace('"', "");
-    std::process::Command::new("osascript")
-        .args([
-            "-e",
-            &format!("tell application \"{}\" to activate", sanitized),
-        ])
-        .status()?;
+#[cfg(not(target_os = "macos"))]
+pub fn activate_app(_front: &FrontApp) -> Result<()> {
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn frontmost_pid() -> Option<i32> {
+    use objc2_app_kit::NSWorkspace;
+    let ws = NSWorkspace::sharedWorkspace();
+    ws.frontmostApplication().map(|a| a.processIdentifier())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn frontmost_pid() -> Option<i32> {
+    None
 }

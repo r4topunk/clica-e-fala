@@ -149,9 +149,16 @@ fn run_pipeline(
                 }
             };
 
-            if let Some(f) = front {
-                let _ = review::activate_app(&f);
-                std::thread::sleep(std::time::Duration::from_millis(80));
+            if let Some(f) = &front {
+                let _ = review::activate_app(f);
+                let deadline = std::time::Instant::now()
+                    + std::time::Duration::from_millis(150);
+                while std::time::Instant::now() < deadline {
+                    if review::frontmost_pid() == Some(f.pid) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
             }
 
             let _ = tray::update_last_output(app, &edited.refined);
