@@ -6,6 +6,7 @@ mod logging;
 mod pipeline;
 mod review;
 mod sound;
+mod tray;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -44,8 +45,10 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
         let app_handle = app.clone();
 
         std::thread::spawn(move || {
-            if let Err(e) = run_pipeline(recorder, &model, &player, &paste_lock, mode, &app_handle)
-            {
+            let result =
+                run_pipeline(recorder, &model, &player, &paste_lock, mode, &app_handle);
+            let _ = tray::set_state(&app_handle, tray::TrayState::Idle);
+            if let Err(e) = result {
                 logln!("[pipeline] error: {:?}", e);
             }
         });
@@ -61,6 +64,7 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
         match audio::start(path) {
             Ok(r) => {
                 *state.recorder.lock().unwrap() = Some((r, new_mode));
+                let _ = tray::set_state(app, tray::TrayState::Recording);
                 logln!("[rec] started (mode={:?})", new_mode);
             }
             Err(e) => {
@@ -84,6 +88,7 @@ fn run_pipeline(
     let normalized = pipeline::preprocess(&wav)?;
     logln!("[ffmpeg] normalized");
 
+    let _ = tray::set_state(app, tray::TrayState::Transcribing);
     let transcript = {
         let _guard = player.start_transcribe_loop();
         let provider = if std::env::var("GROQ_API_KEY")
@@ -108,6 +113,7 @@ fn run_pipeline(
             transcript.clone()
         }
         Mode::Refined => {
+            let _ = tray::set_state(app, tray::TrayState::Refining);
             let (refined, provider) = {
                 let _guard = player.start_claude_loop();
                 logln!("[refine] starting");
@@ -120,6 +126,7 @@ fn run_pipeline(
 
             let front = review::capture_frontmost_app();
             logln!("[review] frontmost app: {:?}", front);
+            let _ = tray::set_state(app, tray::TrayState::Review);
 
             let edited = match review::show_and_wait(
                 app,
@@ -144,21 +151,28 @@ fn run_pipeline(
 
             if let Some(f) = front {
                 let _ = review::activate_app(&f);
-                std::thread::sleep(std::time::Duration::from_millis(180));
+                std::thread::sleep(std::time::Duration::from_millis(80));
             }
 
-            match pipeline::log_and_maybe_consolidate(&edited.transcript, &edited.refined, provider)
-            {
-                Ok(true) => {
-                    logln!("[consolidate] threshold hit, running");
-                    match pipeline::consolidate_profile() {
-                        Ok(n) => logln!("[consolidate] appended {} bullets", n),
-                        Err(e) => logln!("[consolidate] error: {:?}", e),
+            let _ = tray::update_last_output(app, &edited.refined);
+
+            let t = edited.transcript.clone();
+            let r = edited.refined.clone();
+            let prov = provider.to_string();
+            std::thread::spawn(move || {
+                match pipeline::log_and_maybe_consolidate(&t, &r, &prov) {
+                    Ok(true) => {
+                        logln!("[consolidate] threshold hit, running (bg)");
+                        match pipeline::consolidate_profile() {
+                            Ok(n) => logln!("[consolidate] appended {} bullets", n),
+                            Err(e) => logln!("[consolidate] error: {:?}", e),
+                        }
                     }
+                    Ok(false) => {}
+                    Err(e) => logln!("[history] log error: {:?}", e),
                 }
-                Ok(false) => {}
-                Err(e) => logln!("[history] log error: {:?}", e),
-            }
+            });
+
             edited.refined
         }
     };
@@ -233,16 +247,17 @@ fn main() {
             let toggle = MenuItem::with_id(
                 app,
                 "toggle",
-                "Toggle Recording  (⌘⇧Space)",
+                "Record / Stop  (⌘⇧Space)",
                 true,
                 None::<&str>,
             )?;
             let menu = Menu::with_items(app, &[&toggle, &quit])?;
 
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id(tray::TRAY_ID)
                 .menu(&menu)
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Clica e Fala")
+                .icon(tray::initial_icon()?)
+                .icon_as_template(false)
+                .tooltip("Clica e Fala — idle")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),
                     "toggle" => {
