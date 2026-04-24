@@ -13,6 +13,10 @@
     --muted: #0d7a22;
     --accent: #39ff14;
     --glow: rgba(57, 255, 20, 0.55);
+    --text-pink: #ff2bd6;
+    --text-pink-dim: #c21aa3;
+    --border-pink: #4a0f3a;
+    --glow-pink: rgba(255, 43, 214, 0.55);
   }
   * { box-sizing: border-box; }
   html, body {
@@ -110,16 +114,39 @@
     color: #000;
     text-shadow: none;
   }
+  .field.refined label {
+    color: var(--text-pink-dim);
+    text-shadow: 0 0 6px var(--glow-pink);
+  }
+  .field.refined textarea {
+    color: var(--text-pink);
+    border-color: var(--border-pink);
+    caret-color: var(--text-pink);
+    text-shadow: 0 0 4px var(--glow-pink);
+    box-shadow: inset 0 0 12px rgba(255, 43, 214, 0.08);
+  }
+  .field.refined textarea:focus {
+    border-color: var(--text-pink);
+    box-shadow:
+      0 0 0 1px var(--text-pink),
+      0 0 18px rgba(255, 43, 214, 0.45),
+      inset 0 0 14px rgba(255, 43, 214, 0.12);
+  }
+  .field.refined textarea::selection {
+    background: rgba(255, 43, 214, 0.35);
+    color: #000;
+    text-shadow: none;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="field transcript">
-    <label>Transcript (PT-BR, editável)</label>
+    <label>Transcript</label>
     <textarea id="transcript" spellcheck="false"></textarea>
   </div>
   <div class="field refined">
-    <label>Refined prompt (EN, vai ser colado)</label>
+    <label>Refined prompt</label>
     <textarea id="refined" spellcheck="false"></textarea>
   </div>
   <div class="hint">
