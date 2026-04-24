@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio;
+mod config;
 mod history;
 mod logging;
 mod pipeline;
@@ -199,6 +200,8 @@ fn main() {
         Err(e) => eprintln!("[init] no .env loaded: {}", e),
     }
 
+    config::ensure_groq_key();
+
     let model_path = dirs_home()
         .join("models")
         .join("whisper")
@@ -258,7 +261,14 @@ fn main() {
                 true,
                 None::<&str>,
             )?;
-            let menu = Menu::with_items(app, &[&toggle, &quit])?;
+            let reset_key = MenuItem::with_id(
+                app,
+                "reset_key",
+                "Reset API Key…",
+                true,
+                None::<&str>,
+            )?;
+            let menu = Menu::with_items(app, &[&toggle, &reset_key, &quit])?;
 
             let _tray = TrayIconBuilder::with_id(tray::TRAY_ID)
                 .menu(&menu)
@@ -270,6 +280,9 @@ fn main() {
                     "toggle" => {
                         let handle = app.clone();
                         std::thread::spawn(move || toggle_recording(&handle, Mode::Refined));
+                    }
+                    "reset_key" => {
+                        std::thread::spawn(|| config::reset_key());
                     }
                     _ => {}
                 })
