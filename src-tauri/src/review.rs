@@ -15,6 +15,7 @@ pub enum ReviewResult {
     Submit {
         transcript: String,
         refined: String,
+        auto_enter: bool,
     },
     Cancel,
 }
@@ -27,6 +28,7 @@ pub struct ReviewSlot {
 pub struct Edited {
     pub transcript: String,
     pub refined: String,
+    pub auto_enter: bool,
 }
 
 pub fn show_and_wait(app: &AppHandle, payload: ReviewPayload) -> Result<Option<Edited>> {
@@ -48,8 +50,8 @@ pub fn show_and_wait(app: &AppHandle, payload: ReviewPayload) -> Result<Option<E
     *slot.tx.lock().unwrap() = None;
 
     match result {
-        Ok(ReviewResult::Submit { transcript, refined }) => {
-            Ok(Some(Edited { transcript, refined }))
+        Ok(ReviewResult::Submit { transcript, refined, auto_enter }) => {
+            Ok(Some(Edited { transcript, refined, auto_enter }))
         }
         Ok(ReviewResult::Cancel) => Ok(None),
         Err(_) => Err(anyhow!("review timeout (10 min)")),
@@ -57,9 +59,14 @@ pub fn show_and_wait(app: &AppHandle, payload: ReviewPayload) -> Result<Option<E
 }
 
 #[tauri::command]
-pub fn review_submit(slot: State<'_, ReviewSlot>, transcript: String, refined: String) {
+pub fn review_submit(
+    slot: State<'_, ReviewSlot>,
+    transcript: String,
+    refined: String,
+    auto_enter: bool,
+) {
     if let Some(tx) = slot.tx.lock().unwrap().take() {
-        let _ = tx.send(ReviewResult::Submit { transcript, refined });
+        let _ = tx.send(ReviewResult::Submit { transcript, refined, auto_enter });
     }
 }
 

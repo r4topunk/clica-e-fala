@@ -338,6 +338,27 @@ pub fn post_cmd_v() -> Result<()> {
     Err(anyhow!("paste only implemented on macOS"))
 }
 
+#[cfg(target_os = "macos")]
+pub fn post_return() -> Result<()> {
+    use core_graphics::event::{CGEvent, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|_| anyhow!("CGEventSource::new failed"))?;
+    let down = CGEvent::new_keyboard_event(src.clone(), 36, true)
+        .map_err(|_| anyhow!("CGEvent return-down failed"))?;
+    down.post(CGEventTapLocation::HID);
+    let up = CGEvent::new_keyboard_event(src, 36, false)
+        .map_err(|_| anyhow!("CGEvent return-up failed"))?;
+    up.post(CGEventTapLocation::HID);
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn post_return() -> Result<()> {
+    Err(anyhow!("post_return only implemented on macOS"))
+}
+
 pub fn log_and_maybe_consolidate(transcript: &str, refined: &str, model_used: &str) -> Result<bool> {
     crate::history::append_entry(transcript, refined, model_used)?;
 

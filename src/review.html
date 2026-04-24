@@ -150,7 +150,7 @@
     <textarea id="refined" spellcheck="false"></textarea>
   </div>
   <div class="hint">
-    <kbd>⏎</kbd> paste · <kbd>⇧⏎</kbd> newline · <kbd>⇥</kbd> switch field · <kbd>esc</kbd> cancel
+    <kbd>⏎</kbd> paste · <kbd>⇧⏎</kbd> paste+send · <kbd>⇥</kbd> switch field · <kbd>esc</kbd> cancel
   </div>
 </div>
 <script>
@@ -159,10 +159,11 @@
   const tEl = document.getElementById('transcript');
   const rEl = document.getElementById('refined');
 
-  function submit() {
+  function submit(autoEnter) {
     invoke('review_submit', {
       transcript: tEl.value,
       refined: rEl.value,
+      autoEnter: !!autoEnter,
     });
   }
 
@@ -172,9 +173,9 @@
 
   function attach(el) {
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        submit();
+        submit(e.shiftKey);
       } else if (e.key === 'Escape') {
         e.preventDefault();
         cancel();

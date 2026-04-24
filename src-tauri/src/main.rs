@@ -108,10 +108,10 @@ fn run_pipeline(
         return Err(anyhow::anyhow!("empty transcript"));
     }
 
-    let output = match mode {
+    let (output, auto_enter) = match mode {
         Mode::Raw => {
             logln!("[mode] raw — skipping refine");
-            transcript.clone()
+            (transcript.clone(), false)
         }
         Mode::Refined => {
             let _ = tray::set_state(app, tray::TrayState::Refining);
@@ -181,14 +181,18 @@ fn run_pipeline(
                 }
             });
 
-            edited.refined
+            (edited.refined, edited.auto_enter)
         }
     };
 
     {
         let _paste_guard = paste_lock.lock().unwrap();
-        logln!("[paste] acquired lock, pasting");
+        logln!("[paste] acquired lock, pasting (auto_enter={})", auto_enter);
         pipeline::copy_and_paste(&output)?;
+        if auto_enter {
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            pipeline::post_return()?;
+        }
     }
     player.play_finish();
     Ok(())
