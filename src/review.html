@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Review</title>
+<style>
+  :root {
+    --bg: #000000;
+    --panel: #020a04;
+    --border: #0f3d1a;
+    --text: #39ff14;
+    --text-dim: #1fa10c;
+    --muted: #0d7a22;
+    --accent: #39ff14;
+    --glow: rgba(57, 255, 20, 0.55);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, SF Mono, Menlo, monospace;
+    height: 100vh;
+    overflow: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(57, 255, 20, 0.03) 0px,
+      rgba(57, 255, 20, 0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 1;
+  }
+  .wrap {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: 100vh;
+    position: relative;
+    z-index: 2;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 0;
+  }
+  .field.refined { flex: 1.4; }
+  .field.transcript { flex: 1; }
+  label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    font-weight: 700;
+    text-shadow: 0 0 6px var(--glow);
+  }
+  textarea {
+    width: 100%;
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 13px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.45;
+    min-height: 40px;
+    caret-color: var(--accent);
+    text-shadow: 0 0 4px var(--glow);
+    box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.08);
+  }
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 0 18px rgba(57, 255, 20, 0.45),
+      inset 0 0 14px rgba(57, 255, 20, 0.12);
+  }
+  .hint {
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 4px var(--glow);
+  }
+  kbd {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 5px;
+    font-family: inherit;
+    font-size: 10px;
+    color: var(--text);
+    text-shadow: 0 0 4px var(--glow);
+  }
+  ::selection {
+    background: rgba(57, 255, 20, 0.35);
+    color: #000;
+    text-shadow: none;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="field transcript">
+    <label>Transcript (PT-BR, editável)</label>
+    <textarea id="transcript" spellcheck="false"></textarea>
+  </div>
+  <div class="field refined">
+    <label>Refined prompt (EN, vai ser colado)</label>
+    <textarea id="refined" spellcheck="false"></textarea>
+  </div>
+  <div class="hint">
+    <kbd>⏎</kbd> paste · <kbd>⇧⏎</kbd> newline · <kbd>⇥</kbd> switch field · <kbd>esc</kbd> cancel
+  </div>
+</div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const tEl = document.getElementById('transcript');
+  const rEl = document.getElementById('refined');
+
+  function submit() {
+    invoke('review_submit', {
+      transcript: tEl.value,
+      refined: rEl.value,
+    });
+  }
+
+  function cancel() {
+    invoke('review_cancel');
+  }
+
+  function attach(el) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    });
+  }
+
+  attach(tEl);
+  attach(rEl);
+
+  listen('review:populate', (event) => {
+    const p = event.payload || {};
+    tEl.value = p.transcript || '';
+    rEl.value = p.refined || '';
+    rEl.focus();
+    rEl.setSelectionRange(rEl.value.length, rEl.value.length);
+  });
+</script>
+</body>
+</html>

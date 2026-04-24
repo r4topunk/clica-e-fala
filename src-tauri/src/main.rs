@@ -4,6 +4,7 @@ mod audio;
 mod history;
 mod logging;
 mod pipeline;
+mod review;
 mod sound;
 
 use std::path::PathBuf;
@@ -40,9 +41,11 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
         let model = state.model_path.clone();
         let player = state.player.clone();
         let paste_lock = state.paste_lock.clone();
+        let app_handle = app.clone();
 
         std::thread::spawn(move || {
-            if let Err(e) = run_pipeline(recorder, &model, &player, &paste_lock, mode) {
+            if let Err(e) = run_pipeline(recorder, &model, &player, &paste_lock, mode, &app_handle)
+            {
                 logln!("[pipeline] error: {:?}", e);
             }
         });
@@ -73,6 +76,7 @@ fn run_pipeline(
     player: &sound::AudioPlayer,
     paste_lock: &std::sync::Arc<Mutex<()>>,
     mode: Mode,
+    app: &tauri::AppHandle,
 ) -> anyhow::Result<()> {
     let wav = recorder.stop()?;
     logln!("[rec] stopped (mode={:?})", mode);
@@ -114,7 +118,37 @@ fn run_pipeline(
                 return Err(anyhow::anyhow!("empty refinement"));
             }
 
-            match pipeline::log_and_maybe_consolidate(&transcript, &refined, provider) {
+            let front = review::capture_frontmost_app();
+            logln!("[review] frontmost app: {:?}", front);
+
+            let edited = match review::show_and_wait(
+                app,
+                review::ReviewPayload {
+                    transcript: transcript.clone(),
+                    refined: refined.clone(),
+                },
+            ) {
+                Ok(Some(e)) => e,
+                Ok(None) => {
+                    logln!("[review] cancelled");
+                    if let Some(f) = front {
+                        let _ = review::activate_app(&f);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    logln!("[review] error: {:?}", e);
+                    return Err(e);
+                }
+            };
+
+            if let Some(f) = front {
+                let _ = review::activate_app(&f);
+                std::thread::sleep(std::time::Duration::from_millis(180));
+            }
+
+            match pipeline::log_and_maybe_consolidate(&edited.transcript, &edited.refined, provider)
+            {
                 Ok(true) => {
                     logln!("[consolidate] threshold hit, running");
                     match pipeline::consolidate_profile() {
@@ -125,7 +159,7 @@ fn run_pipeline(
                 Ok(false) => {}
                 Err(e) => logln!("[history] log error: {:?}", e),
             }
-            refined
+            edited.refined
         }
     };
 
@@ -186,6 +220,11 @@ fn main() {
                 .build(),
         )
         .manage(state)
+        .manage(review::ReviewSlot::default())
+        .invoke_handler(tauri::generate_handler![
+            review::review_submit,
+            review::review_cancel
+        ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
