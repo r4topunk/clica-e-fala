@@ -241,9 +241,7 @@ fn main() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    let mode = if shortcut
-                        .matches(Modifiers::SUPER | Modifiers::SHIFT | Modifiers::ALT, Code::Space)
-                    {
+                    let mode = if shortcut.matches(Modifiers::SHIFT, Code::F5) {
                         Mode::Raw
                     } else {
                         Mode::Refined
@@ -267,7 +265,7 @@ fn main() {
             let toggle = MenuItem::with_id(
                 app,
                 "toggle",
-                "Record / Stop  (⌘⇧Space)",
+                "Record / Stop  (F5)",
                 true,
                 None::<&str>,
             )?;
@@ -302,15 +300,11 @@ fn main() {
                 logln!("[aura] install failed: {:?}", e);
             }
 
-            let refined_sc =
-                Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
-            let raw_sc = Shortcut::new(
-                Some(Modifiers::SUPER | Modifiers::SHIFT | Modifiers::ALT),
-                Code::Space,
-            );
+            let refined_f5 = Shortcut::new(None, Code::F5);
+            let raw_f5 = Shortcut::new(Some(Modifiers::SHIFT), Code::F5);
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            app.global_shortcut().register(refined_sc)?;
-            app.global_shortcut().register(raw_sc)?;
+            app.global_shortcut().register(refined_f5)?;
+            app.global_shortcut().register(raw_f5)?;
 
             Ok(())
         })

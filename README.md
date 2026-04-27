@@ -5,7 +5,7 @@ App de menubar pra macOS que transforma pensamento em voz em prompt formatado pr
 Você fala em português, sem se preocupar com ordem ou coerência — muda de ideia, hesita, enrola — e o app transcreve, refina via LLM e cola um prompt técnico em inglês direto no editor focado.
 
 ```
-⌘⇧Space → grava → ⌘⇧Space → transcreve → refina → cola
+F5 → grava → F5 → transcreve → refina → cola
 ```
 
 ## Por quê
@@ -71,8 +71,8 @@ Sem Accessibility, o texto vai pro clipboard mas não cola sozinho.
 
 | Atalho | Modo | Fluxo |
 |--------|------|-------|
-| `⌘⇧Space` | Refined | transcribe → refine (LLM) → paste |
-| `⌘⇧⌥Space` | Raw | transcribe → paste direto |
+| `F5` | Refined | transcribe → refine (LLM) → paste |
+| `⇧F5` | Raw (PT-BR direto) | transcribe → paste sem refine |
 
 **Fluxo sonoro:**
 - Blip curto → gravação iniciou, fale agora
@@ -172,6 +172,7 @@ Editar em `src-tauri/src/pipeline.rs` → `SYSTEM_PROMPT`.
 | Problema | Solução |
 |----------|---------|
 | Cmd+V não cola | System Settings → Privacy → Accessibility → habilitar o binário (dev: `src-tauri/target/debug/clica-e-fala`, release: `ClicaEFala.app`) |
+| F5 abre dictation do macOS em vez do app | Magic Keyboard tem 🎤 no F5 (HID-level). Opcoes: (a) usar `Fn+F5` — funciona com fn-keys default; (b) System Settings → Keyboard → "Press 🎤 key to:" → trocar pra `F5` ou `Do Nothing`; (c) desligar Dictation inteiro em System Settings → Keyboard → Dictation. Trocar so o shortcut do dictation **nao** resolve |
 | Hotkey não dispara | Conflito com outro app. Alterar em `main.rs` → `Shortcut::new(...)` |
 | Whisper local não acha modelo | Ajustar path em `main.rs` → `model_path` |
 | Transcrição ruim | Verificar device em log `[cpal] picked built-in:`. Se estiver pegando AirPods, renomear dispositivo ou alterar filtro em `audio.rs` → `pick_builtin_mic` |
