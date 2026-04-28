@@ -86,6 +86,8 @@ fn run_pipeline(
     let wav = recorder.stop()?;
     logln!("[rec] stopped (mode={:?})", mode);
 
+    let _ = tray::set_state(app, tray::TrayState::Processing);
+    aura::set_state(app, tray::TrayState::Processing);
     let normalized = pipeline::preprocess(&wav)?;
     logln!("[ffmpeg] normalized");
 
