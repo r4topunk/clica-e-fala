@@ -277,11 +277,104 @@ pub fn log_and_maybe_consolidate(transcript: &str, refined: &str, model_used: &s
         .unwrap_or(20);
 
     let count = crate::history::increment_counter();
-    if count >= threshold {
-        crate::history::reset_counter();
-        return Ok(true);
+    if count < threshold {
+        return Ok(false);
     }
-    Ok(false)
+
+    // Quality gates — skip consolidation on thin/noisy sessions.
+    let recent = crate::history::read_last_n(threshold as usize);
+    let total_chars: usize = recent.iter().map(|e| e.transcript.len()).sum();
+    let min_chars: usize = std::env::var("MIN_TRANSCRIPT_CHARS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(200);
+    if total_chars < min_chars {
+        crate::logln!("[consolidate] skip — transcripts too short ({} chars)", total_chars);
+        crate::history::reset_counter();
+        return Ok(false);
+    }
+
+    // Skip if >70% of transcripts are near-duplicate (token Jaccard).
+    if transcripts_are_repetitive(&recent) {
+        crate::logln!("[consolidate] skip — transcripts too repetitive");
+        crate::history::reset_counter();
+        return Ok(false);
+    }
+
+    crate::history::reset_counter();
+    Ok(true)
+}
+
+/// Returns true if majority of recent transcripts share >70% token overlap with each other.
+fn transcripts_are_repetitive(entries: &[crate::history::Entry]) -> bool {
+    if entries.len() < 4 {
+        return false;
+    }
+    let tokenize = |s: &str| -> std::collections::HashSet<String> {
+        s.split_whitespace()
+            .map(|w| w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+            .filter(|w| w.len() > 2)
+            .collect()
+    };
+    let sets: Vec<_> = entries.iter().map(|e| tokenize(&e.transcript)).collect();
+    let mut similar_pairs = 0u32;
+    let total_pairs = (sets.len() * (sets.len().saturating_sub(1))) / 2;
+    if total_pairs == 0 {
+        return false;
+    }
+    for i in 0..sets.len() {
+        for j in (i + 1)..sets.len() {
+            let inter = sets[i].intersection(&sets[j]).count();
+            let union = sets[i].union(&sets[j]).count();
+            if union > 0 && (inter as f32 / union as f32) > 0.70 {
+                similar_pairs += 1;
+            }
+        }
+    }
+    (similar_pairs as f32 / total_pairs as f32) > 0.50
+}
+
+/// LLM-structured candidates output shape.
+#[derive(serde::Deserialize, Default)]
+struct ConsolidateCandidates {
+    #[serde(default)]
+    codenames: Vec<String>,
+    #[serde(default)]
+    stack: Vec<String>,
+    #[serde(default)]
+    vocab: Vec<VocabEntry>,
+    #[serde(default)]
+    style: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct VocabEntry {
+    pt: String,
+    en: String,
+}
+
+/// PT-BR filler words — single-occurrence bullets matching only these are dropped.
+const PT_FILLER: &[&str] = &[
+    "tipo", "então", "né", "aí", "é", "basicamente", "assim", "vamos", "fazer",
+    "fazer", "isso", "aqui", "agora", "depois", "antes", "já", "ainda",
+];
+
+fn is_garbage(term: &str) -> bool {
+    let t = term.trim().to_lowercase();
+    if t.len() < 3 {
+        return true;
+    }
+    // Pure filler
+    if PT_FILLER.contains(&t.as_str()) {
+        return true;
+    }
+    // Looks like a sentence fragment (contains space + no slash/dot/underscore = probably description, not a term)
+    let has_technical_char = t.contains('/') || t.contains('.') || t.contains('_') || t.contains('-');
+    let word_count = t.split_whitespace().count();
+    if word_count > 3 && !has_technical_char {
+        return true;
+    }
+    false
 }
 
 pub fn consolidate_profile() -> Result<usize> {
@@ -306,7 +399,23 @@ pub fn consolidate_profile() -> Result<usize> {
         .collect::<Vec<_>>()
         .join("\n\n---\n\n");
 
-    let system = "You maintain a user profile for a voice-to-prompt app. Given the CURRENT PROFILE and RECENT PAIRS of (INPUT transcript, OUTPUT refined prompt), propose 0 to 5 concise bullets to APPEND under a new dated section. Bullets should capture: new project names/codenames, technical terms, acronyms, recurring entities, or stylistic preferences the user clearly exhibits. Do NOT duplicate anything already in the profile. Do NOT include generic advice. Output ONLY a JSON array of strings (bullet text, no leading dash, no markdown). If nothing new worth adding, output []. No preamble, no markdown fences.";
+    let system = r#"You maintain a user profile for a voice-to-prompt app. Given the CURRENT PROFILE and RECENT PAIRS of (INPUT transcript, OUTPUT refined prompt), identify NEW terms worth tracking — not already in the profile.
+
+Output ONLY a JSON object with these keys (omit empty arrays):
+{
+  "codenames": ["project name or internal nickname not in profile"],
+  "stack": ["tech/tool/framework name not in profile"],
+  "vocab": [{"pt": "portuguese word", "en": "english equivalent"}],
+  "style": ["concise style rule observed"]
+}
+
+Rules:
+- Only include terms that appear in the transcripts (no hallucinations).
+- codenames: project names, internal identifiers, feature names the user refers to by name.
+- stack: concrete tool/lib/framework names only. No generic words.
+- vocab: only non-obvious mappings (e.g. "shippar" → "ship") not already in the profile.
+- style: only strong, repeated stylistic preferences. Max 1 per consolidation.
+- If nothing new, output {}. No preamble, no markdown fences."#;
 
     let user = format!(
         "CURRENT PROFILE:\n{}\n\nRECENT PAIRS:\n{}",
@@ -339,32 +448,59 @@ pub fn consolidate_profile() -> Result<usize> {
     let json: serde_json::Value = resp.json()?;
     let raw = json["choices"][0]["message"]["content"]
         .as_str()
-        .unwrap_or("[]")
+        .unwrap_or("{}")
         .trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
 
-    let bullets: Vec<String> = match serde_json::from_str::<Vec<String>>(raw) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(anyhow!("consolidate parse error: {} raw={}", e, raw));
-        }
+    let parsed: ConsolidateCandidates = serde_json::from_str(raw).unwrap_or_default();
+
+    // Collect all candidates, applying garbage filter and transcript presence check.
+    let recent_transcripts: Vec<String> = entries.iter().map(|e| e.transcript.to_lowercase()).collect();
+    let term_in_transcripts = |term: &str| -> bool {
+        let t = term.to_lowercase();
+        recent_transcripts.iter().any(|tr| tr.contains(&t))
     };
-    if bullets.is_empty() {
+
+    let mut candidates: Vec<(String, String, Option<String>)> = Vec::new();
+
+    for term in &parsed.codenames {
+        if !is_garbage(term) && term_in_transcripts(term) {
+            candidates.push((term.clone(), "codenames".to_string(), None));
+        }
+    }
+    for term in &parsed.stack {
+        if !is_garbage(term) && term_in_transcripts(term) {
+            candidates.push((term.clone(), "stack".to_string(), None));
+        }
+    }
+    for v in &parsed.vocab {
+        if !is_garbage(&v.en) && (term_in_transcripts(&v.pt) || term_in_transcripts(&v.en)) {
+            candidates.push((v.en.clone(), "vocab".to_string(), Some(v.pt.clone())));
+        }
+    }
+    for term in &parsed.style {
+        if !is_garbage(term) {
+            candidates.push((term.clone(), "style".to_string(), None));
+        }
+    }
+
+    if candidates.is_empty() {
+        crate::logln!("[consolidate] no new candidates after filtering");
         return Ok(0);
     }
 
-    let addendum = format!(
-        "\n\n## Consolidated {}\n{}\n",
-        chrono::Local::now().format("%Y-%m-%d %H:%M"),
-        bullets
-            .iter()
-            .map(|b| format!("- {}", b))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-    crate::history::append_to_profile(&addendum)?;
-    Ok(bullets.len())
+    crate::logln!("[consolidate] {} candidates staged", candidates.len());
+
+    // Stage into candidates.json; get back terms ready to promote.
+    let promoted = crate::history::upsert_candidates(&candidates)?;
+
+    if !promoted.is_empty() {
+        crate::logln!("[consolidate] promoting {} terms into profile", promoted.len());
+        crate::history::merge_into_profile(&promoted)?;
+    }
+
+    Ok(candidates.len())
 }
