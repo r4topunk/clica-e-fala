@@ -84,15 +84,8 @@ pub fn preprocess(audio: &Path) -> Result<std::path::PathBuf> {
     Ok(out)
 }
 
-pub fn transcribe(audio: &Path, model: &Path) -> Result<String> {
-    if std::env::var("GROQ_API_KEY")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false)
-    {
-        transcribe_groq(audio)
-    } else {
-        transcribe_local(audio, model)
-    }
+pub fn transcribe(audio: &Path) -> Result<String> {
+    transcribe_groq(audio)
 }
 
 pub fn transcribe_groq(audio: &Path) -> Result<String> {
@@ -136,48 +129,6 @@ pub fn transcribe_groq(audio: &Path) -> Result<String> {
     Ok(resp.text()?.trim().to_string())
 }
 
-pub fn transcribe_local(audio: &Path, model: &Path) -> Result<String> {
-    let out_base = audio.with_extension("");
-    let out_base_str = out_base
-        .to_str()
-        .ok_or_else(|| anyhow!("bad out path"))?;
-
-    let output = Command::new("whisper-cli")
-        .args([
-            "-m",
-            model.to_str().ok_or_else(|| anyhow!("bad model path"))?,
-            "-f",
-            audio.to_str().ok_or_else(|| anyhow!("bad audio path"))?,
-            "-l",
-            "pt",
-            "-bs",
-            "5",
-            "-bo",
-            "5",
-            "--prompt",
-            WHISPER_PROMPT,
-            "--no-prints",
-            "-otxt",
-            "-of",
-            out_base_str,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()?;
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "whisper-cli failed (status {}): stderr={}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-
-    let txt_path = out_base.with_extension("txt");
-    let content = std::fs::read_to_string(&txt_path)?;
-    Ok(content.trim().to_string())
-}
-
 fn build_system_prompt() -> String {
     match crate::history::read_profile() {
         Some(profile) => format!(
@@ -194,15 +145,8 @@ fn build_user_message(transcript: &str) -> String {
     )
 }
 
-pub fn refine(transcript: &str) -> Result<(String, &'static str)> {
-    if std::env::var("GROQ_API_KEY")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false)
-    {
-        Ok((refine_with_groq(transcript)?, "groq"))
-    } else {
-        Ok((refine_with_claude(transcript)?, "claude-cli"))
-    }
+pub fn refine(transcript: &str) -> Result<String> {
+    refine_with_groq(transcript)
 }
 
 pub fn refine_with_groq(transcript: &str) -> Result<String> {
@@ -265,41 +209,6 @@ pub fn refine_with_groq(transcript: &str) -> Result<String> {
         .as_str()
         .ok_or_else(|| anyhow!("no content in groq response"))?;
     Ok(content.trim().to_string())
-}
-
-pub fn refine_with_claude(transcript: &str) -> Result<String> {
-    if transcript.is_empty() {
-        return Err(anyhow!("empty transcript"));
-    }
-
-    let user_message = build_user_message(transcript);
-
-    let system = build_system_prompt();
-    let output = Command::new("claude")
-        .args([
-            "-p",
-            &user_message,
-            "--model",
-            "haiku",
-            "--append-system-prompt",
-            &system,
-            "--disallowedTools",
-            "Bash Edit Write Read Glob Grep Task WebFetch WebSearch",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()?;
-
-    if !output.status.success() {
-        return Err(anyhow!(
-            "claude failed (status {}): stderr={} stdout={}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim(),
-            String::from_utf8_lossy(&output.stdout).trim()
-        ));
-    }
-    Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
 pub fn copy_and_paste(text: &str) -> Result<()> {

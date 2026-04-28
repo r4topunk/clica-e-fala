@@ -28,7 +28,6 @@ enum Mode {
 
 struct AppState {
     recorder: Mutex<Option<(audio::Recorder, Mode)>>,
-    model_path: PathBuf,
     work_dir: PathBuf,
     player: sound::AudioPlayer,
     paste_lock: std::sync::Arc<Mutex<()>>,
@@ -41,14 +40,13 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
     if is_recording {
         let taken = state.recorder.lock().unwrap().take();
         let Some((recorder, mode)) = taken else { return };
-        let model = state.model_path.clone();
         let player = state.player.clone();
         let paste_lock = state.paste_lock.clone();
         let app_handle = app.clone();
 
         std::thread::spawn(move || {
             let result =
-                run_pipeline(recorder, &model, &player, &paste_lock, mode, &app_handle);
+                run_pipeline(recorder, &player, &paste_lock, mode, &app_handle);
             let _ = tray::set_state(&app_handle, tray::TrayState::Idle);
             aura::set_state(&app_handle, tray::TrayState::Idle);
             if let Err(e) = result {
@@ -80,7 +78,6 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
 
 fn run_pipeline(
     recorder: audio::Recorder,
-    model: &std::path::Path,
     player: &sound::AudioPlayer,
     paste_lock: &std::sync::Arc<Mutex<()>>,
     mode: Mode,
@@ -96,16 +93,8 @@ fn run_pipeline(
     aura::set_state(app, tray::TrayState::Transcribing);
     let transcript = {
         let _guard = player.start_transcribe_loop();
-        let provider = if std::env::var("GROQ_API_KEY")
-            .map(|v| !v.trim().is_empty())
-            .unwrap_or(false)
-        {
-            "groq"
-        } else {
-            "local"
-        };
-        logln!("[whisper] starting ({})", provider);
-        pipeline::transcribe(&normalized, model)
+        logln!("[whisper] starting");
+        pipeline::transcribe(&normalized)
     }?;
     logln!("[whisper] transcript: {}", transcript);
     if transcript.is_empty() {
@@ -120,12 +109,12 @@ fn run_pipeline(
         Mode::Refined => {
             let _ = tray::set_state(app, tray::TrayState::Refining);
             aura::set_state(app, tray::TrayState::Refining);
-            let (refined, provider) = {
+            let refined = {
                 let _guard = player.start_claude_loop();
                 logln!("[refine] starting");
                 pipeline::refine(&transcript)
             }?;
-            logln!("[refine] ({}) refined: {}", provider, refined);
+            logln!("[refine] refined: {}", refined);
             if refined.is_empty() {
                 return Err(anyhow::anyhow!("empty refinement"));
             }
@@ -172,9 +161,8 @@ fn run_pipeline(
 
             let t = edited.transcript.clone();
             let r = edited.refined.clone();
-            let prov = provider.to_string();
             std::thread::spawn(move || {
-                match pipeline::log_and_maybe_consolidate(&t, &r, &prov) {
+                match pipeline::log_and_maybe_consolidate(&t, &r, "groq") {
                     Ok(true) => {
                         logln!("[consolidate] threshold hit, running (bg)");
                         match pipeline::consolidate_profile() {
@@ -212,21 +200,15 @@ fn main() {
 
     config::ensure_groq_key();
 
-    let model_path = dirs_home()
-        .join("models")
-        .join("whisper")
-        .join("ggml-large-v3.bin");
     let work_dir = std::env::temp_dir().join("clica-e-fala");
     std::fs::create_dir_all(&work_dir).ok();
 
-    logln!("[init] model={:?}", model_path);
     logln!("[init] work_dir={:?}", work_dir);
 
     let player = sound::AudioPlayer::new().expect("failed to init audio player");
 
     let state = AppState {
         recorder: Mutex::new(None),
-        model_path,
         work_dir,
         player,
         paste_lock: std::sync::Arc::new(Mutex::new(())),
@@ -312,8 +294,3 @@ fn main() {
         .expect("failed to run tauri app");
 }
 
-fn dirs_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
-}
