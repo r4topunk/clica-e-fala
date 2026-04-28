@@ -4,6 +4,16 @@ use tauri::{AppHandle, Manager, Runtime};
 
 const AURA_LABEL: &str = "aura";
 
+fn phase_for(state: TrayState) -> Option<&'static str> {
+    match state {
+        TrayState::Recording => Some("recording"),
+        TrayState::Processing => Some("processing"),
+        TrayState::Transcribing => Some("transcribing"),
+        TrayState::Refining => Some("refining"),
+        TrayState::Idle | TrayState::Review => None,
+    }
+}
+
 pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let app = app.clone();
     app.clone()
@@ -21,18 +31,25 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
 
 pub fn set_state<R: Runtime>(app: &AppHandle<R>, state: TrayState) {
     let app_cloned = app.clone();
-    let show = matches!(state, TrayState::Recording);
+    let phase = phase_for(state);
     let _ = app.run_on_main_thread(move || {
         let Some(w) = app_cloned.get_webview_window(AURA_LABEL) else {
             return;
         };
-        if show {
-            #[cfg(target_os = "macos")]
-            let _ = position_on_active_screen(&w);
-            let _ = w.set_ignore_cursor_events(true);
-            let _ = w.show();
-        } else {
-            let _ = w.hide();
+        match phase {
+            Some(p) => {
+                #[cfg(target_os = "macos")]
+                let _ = position_on_active_screen(&w);
+                let _ = w.set_ignore_cursor_events(true);
+                let _ = w.show();
+                let js = format!(
+                    "(function(){{window.__auraPhase='{p}';if(window.__applyAuraPhase)window.__applyAuraPhase('{p}');}})()"
+                );
+                let _ = w.eval(&js);
+            }
+            None => {
+                let _ = w.hide();
+            }
         }
     });
 }

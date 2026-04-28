@@ -17,6 +17,7 @@ const ICON_REVIEW: &[u8] = include_bytes!("../icons/tray_review.png");
 pub enum TrayState {
     Idle,
     Recording,
+    Processing,
     Transcribing,
     Refining,
     Review,
@@ -27,6 +28,7 @@ impl TrayState {
         match self {
             TrayState::Idle => ICON_IDLE,
             TrayState::Recording => ICON_RECORDING,
+            TrayState::Processing => ICON_TRANSCRIBING,
             TrayState::Transcribing => ICON_TRANSCRIBING,
             TrayState::Refining => ICON_REFINING,
             TrayState::Review => ICON_REVIEW,
@@ -37,6 +39,7 @@ impl TrayState {
         match self {
             TrayState::Idle => "Clica e Fala — idle",
             TrayState::Recording => "Recording…",
+            TrayState::Processing => "Processing…",
             TrayState::Transcribing => "Transcribing…",
             TrayState::Refining => "Refining…",
             TrayState::Review => "Review — edit & ⏎ to paste",
