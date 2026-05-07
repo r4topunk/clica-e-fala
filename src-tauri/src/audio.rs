@@ -38,7 +38,7 @@ pub fn start(out_path: PathBuf) -> Result<Recorder> {
         )));
         let samples_cb = samples.clone();
 
-        let err_fn = |err| crate::logln!("[cpal] stream error: {}", err);
+        let err_fn = |err| crate::logerr!("[cpal] stream error: {}", err);
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(

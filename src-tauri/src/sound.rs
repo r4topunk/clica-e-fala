@@ -91,7 +91,7 @@ fn run(rx: mpsc::Receiver<AudioCmd>) {
     let (stream, handle) = match OutputStream::try_default() {
         Ok(x) => x,
         Err(e) => {
-            crate::logln!("[audio] failed to open output stream: {}", e);
+            crate::logerr!("[audio] failed to open output stream: {}", e);
             return;
         }
     };
@@ -106,7 +106,7 @@ fn run(rx: mpsc::Receiver<AudioCmd>) {
         match cmd {
             AudioCmd::PlayOnce(buf) => {
                 if let Err(e) = play_once(&handle, buf, &mut oneshots) {
-                    crate::logln!("[audio] play_once: {}", e);
+                    crate::logerr!("[audio] play_once: {}", e);
                 }
             }
             AudioCmd::StartLoop { id, buf } => {
@@ -115,7 +115,7 @@ fn run(rx: mpsc::Receiver<AudioCmd>) {
                 }
                 match start_loop(&handle, buf) {
                     Ok(sink) => current = Some(LoopState { sink, id }),
-                    Err(e) => crate::logln!("[audio] start_loop: {}", e),
+                    Err(e) => crate::logerr!("[audio] start_loop: {}", e),
                 }
             }
             AudioCmd::StopLoop { id } => {

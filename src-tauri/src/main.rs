@@ -50,7 +50,7 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
             let _ = tray::set_state(&app_handle, tray::TrayState::Idle);
             aura::set_state(&app_handle, tray::TrayState::Idle);
             if let Err(e) = result {
-                logln!("[pipeline] error: {:?}", e);
+                logerr!("[pipeline] error: {:?}", e);
             }
         });
     } else {
@@ -70,7 +70,7 @@ fn toggle_recording(app: &tauri::AppHandle, new_mode: Mode) {
                 logln!("[rec] started (mode={:?})", new_mode);
             }
             Err(e) => {
-                logln!("[rec] failed to start: {:?}", e);
+                logerr!("[rec] failed to start: {:?}", e);
             }
         }
     }
@@ -142,7 +142,7 @@ fn run_pipeline(
                     return Ok(());
                 }
                 Err(e) => {
-                    logln!("[review] error: {:?}", e);
+                    logerr!("[review] error: {:?}", e);
                     return Err(e);
                 }
             };
@@ -169,11 +169,11 @@ fn run_pipeline(
                         logln!("[consolidate] threshold hit, running (bg)");
                         match pipeline::consolidate_profile() {
                             Ok(n) => logln!("[consolidate] appended {} bullets", n),
-                            Err(e) => logln!("[consolidate] error: {:?}", e),
+                            Err(e) => logerr!("[consolidate] error: {:?}", e),
                         }
                     }
                     Ok(false) => {}
-                    Err(e) => logln!("[history] log error: {:?}", e),
+                    Err(e) => logerr!("[history] log error: {:?}", e),
                 }
             });
 
@@ -281,7 +281,7 @@ fn main() {
                 .build(app)?;
 
             if let Err(e) = aura::install(app.handle()) {
-                logln!("[aura] install failed: {:?}", e);
+                logerr!("[aura] install failed: {:?}", e);
             }
 
             let refined_f5 = Shortcut::new(None, Code::F5);

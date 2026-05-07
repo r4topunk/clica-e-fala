@@ -135,7 +135,7 @@ pub fn read_profile() -> Option<String> {
         } else {
             // Warn if profile is growing too large (>3KB hurts prompt cost).
             if t.len() > 3072 {
-                crate::logln!(
+                crate::logerr!(
                     "[profile] WARNING: profile.md is {}B — over 3KB budget. Run compact.",
                     t.len()
                 );
